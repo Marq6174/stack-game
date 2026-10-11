@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Medical Stack Live - TikTok Interactive Edition</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Font Awesome Icons for Streamer Controls -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=JetBrains+Mono:wght@500;700&display=swap');
+    
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 30%, #1a233a 0%, #0c101c 100%);
+      font-family: 'Outfit', sans-serif;
+      color: #fff;
+    }
+
+    #webgl-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      outline: none;
+    }
+
+    /* Glassmorphism utility */
+    .glass-card {
+      background: rgba(18, 25, 44, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .pulse-glow {
+      box-shadow: 0 0 25px rgba(239, 68, 68, 0.6);
+      animation: pulseGlow 2s infinite alternate;
+    }
+
+    @keyframes pulseGlow {
+      from { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+      to { box-shadow: 0 0 35px rgba(239, 68, 68, 0.85); }
+    }
+
+    /* Floating Score Popups */
+    .floating-popup {
+      position: absolute;
+      pointer-events: none;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 900;
+      animation: floatUpFade 1.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+      z-index: 50;
+      text-shadow: 0 4px 12px rgba(0,0,0,0.8);
+    }
+
+    @keyframes floatUpFade {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, 0) scale(0.6);
+      }
+      20% {
+        opacity: 1;
+        transform: translate(-50%, -20px) scale(1.15);
+      }
+      80% {
+        opacity: 1;
+        transform: translate(-50%, -60px) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -90px) scale(0.85);
+      }
+    }
+
+    /* Screen Lightning Flash */
+    #lightning-overlay {
+      position: fixed;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 100;
+      transition: opacity 0.08s ease-out;
+    }
+
+    /* Stream ticker custom scrollbar */
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden select-none">
+  <canvas id="webgl-canvas"></canvas>
+  <div id="lightning-overlay"></div>
+  <div id="popup-container"></div>
+
+  <div id="hud-layer" class="relative z-10 w-full h-full pointer-events-none flex flex-col justify-between p-4 md:p-6 transition-opacity duration-300">
+    
+    <!-- TOP BAR: Goals, Scores and Live Ticker -->
+    <div class="flex items-start justify-between w-full max-w-5xl mx-auto gap-4">
+      
+      <!-- Live Status & Mode Badge -->
+      <div class="flex flex-col gap-2 pointer-events-auto">
+        <div class="glass-card px-3.5 py-1.5 rounded-full flex items-center gap-2.5 border-emerald-500/30">
+          <span id="conn-dot" class="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></span>
+          <span id="conn-text" class="text-xs font-semibold tracking-wider uppercase text-emerald-300">TikFinity: Ready</span>
+        </div>
+        
+        <div id="mode-badge" class="glass-card px-3 py-1 rounded-lg text-xs font-bold text-amber-400 border border-amber-400/30 flex items-center gap-2">
+          <i class="fa-solid fa-robot"></i>
+          <span id="mode-text">AUTO-PLAYING</span>
+          <span class="text-[10px] text-gray-400 font-mono">[A to toggle]</span>
+        </div>
+      </div>
+
+      <!-- CENTER: Live Goal & Score Dashboard -->
+      <div class="glass-card px-6 py-4 rounded-3xl flex flex-col items-center border-red-500/30 pulse-glow min-w-[280px] md:min-w-[340px]">
+        <div class="flex items-center gap-2 text-xs font-bold tracking-widest text-red-400 uppercase">
+          <i class="fa-solid fa-notes-medical"></i>
+          <span>SURGICAL GOAL REACH</span>
+        </div>
+
+        <div class="flex items-baseline gap-2 my-1">
+          <span id="score-display" class="text-4xl md:text-5xl font-black text-white font-mono tracking-tight drop-shadow-md">0</span>
+          <span class="text-2xl font-bold text-gray-400">/</span>
+          <span id="goal-display" class="text-2xl md:text-3xl font-extrabold text-red-300 font-mono">100</span>
+        </div>
+
+        <!-- Goal Progress Bar -->
+        <div class="w-full bg-gray-900/80 rounded-full h-3.5 p-0.5 border border-white/10 overflow-hidden relative">
+          <div id="progress-bar" class="h-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-400 rounded-full transition-all duration-300 w-0"></div>
+        </div>
+
+        <div class="w-full flex justify-between items-center mt-2 text-[11px] text-gray-300 font-medium">
+          <span id="percent-display">0.0% SAVED</span>
+          <span class="text-emerald-400 font-bold flex items-center gap-1">
+            <i class="fa-solid fa-heart-pulse animate-pulse"></i>
+            <span id="combo-text">COMBO: x0</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Top Right: TikTok Engagement Indicators -->
+      <div class="glass-card px-4 py-2.5 rounded-2xl hidden sm:flex flex-col gap-1 border-white/10 pointer-events-auto text-xs">
+        <div class="flex items-center justify-between gap-4 text-emerald-300">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-user-plus text-xs"></i> Follower</span>
+          <span class="font-mono font-bold bg-emerald-500/20 px-2 py-0.5 rounded text-[10px]">+5 PTS</span>
+        </div>
+        <div class="flex items-center justify-between gap-4 text-pink-300">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-heart text-xs"></i> 1 Like</span>
+          <span class="font-mono font-bold bg-pink-500/20 px-2 py-0.5 rounded text-[10px]">+1% GOAL</span>
+        </div>
+        <div class="text-[10px] text-gray-400 pt-1 border-t border-white/10">
+          Space: Drop | A: Auto | H: Hide UI
+        </div>
+      </div>
+    </div>
+
+    <div id="streamer-controls" class="w-full max-w-4xl mx-auto pointer-events-auto transition-transform duration-300">
+      <div class="glass-card p-3 md:p-4 rounded-2xl border-white/15 shadow-2xl flex flex-col gap-3">
+        
+        <!-- Controls Header Bar -->
+        <div class="flex items-center justify-between flex-wrap gap-2 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-1 rounded bg-red-600 font-black tracking-wider text-white text-[10px]">LIVE DECK</span>
+            <span class="text-gray-300 font-medium">TikFinity Stream Controller</span>
+          </div>
+          
+          <div class="flex items-center gap-2">
+            <!-- Goal Editor -->
+            <div class="flex items-center bg-gray-900/80 rounded-lg px-2 py-1 border border-white/10">
+              <span class="text-[11px] text-gray-400 mr-2 font-mono">GOAL:</span>
+              <input id="input-goal" type="number" min="10" max="9999" value="100" class="w-16 bg-transparent text-center font-bold text-sm text-yellow-300 outline-none font-mono">
+              <button id="btn-set-goal" class="ml-1 text-[11px] bg-red-600/80 hover:bg-red-500 text-white px-2 py-0.5 rounded transition">SET</button>
+            </div>
+            
+            <button id="btn-toggle-hud" class="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-gray-200 rounded-lg text-xs transition" title="Hide UI for clean OBS source (Press H)">
+              <i class="fa-solid fa-eye-slash mr-1"></i> OBS Mode [H]
+            </button>
+          </div>
+        </div>
+
+        <!-- Action Trigger Buttons for Streamer/Testing -->
+        <div class="grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs">
+          <!-- Manual Drop -->
+          <button id="btn-drop" class="flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white font-bold rounded-xl transition shadow">
+            <i class="fa-solid fa-hand"></i>
+            <span>DROP [Space]</span>
+          </button>
+
+          <!-- Toggle Auto Play -->
+          <button id="btn-auto" class="flex items-center justify-center gap-2 py-2.5 px-3 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white font-bold rounded-xl transition shadow">
+            <i class="fa-solid fa-play"></i>
+            <span>AUTO [A]</span>
+          </button>
+
+          <!-- Follow Event (+5) -->
+          <button id="btn-follow" class="flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl transition shadow">
+            <i class="fa-solid fa-user-plus"></i>
+            <span>FOLLOW (+5) [S]</span>
+          </button>
+
+          <!-- Like Event (+1%) -->
+          <button id="btn-like" class="flex items-center justify-center gap-2 py-2.5 px-3 bg-pink-600 hover:bg-pink-500 active:scale-95 text-white font-bold rounded-xl transition shadow">
+            <i class="fa-solid fa-heart"></i>
+            <span>LIKE (+1%) [L]</span>
+          </button>
+
+          <!-- Point Drop (-5) -->
+          <button id="btn-penalty" class="flex items-center justify-center gap-2 py-2.5 px-3 bg-purple-700 hover:bg-purple-600 active:scale-95 text-white font-bold rounded-xl transition shadow">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>DROP -5 [D]</span>
+          </button>
+
+          <!-- Instant Kill / Lightning Strike -->
+          <button id="btn-kill" class="flex items-center justify-center gap-2 py-2.5 px-3 bg-red-700 hover:bg-red-600 active:scale-95 text-white font-black rounded-xl transition shadow-lg shadow-red-900/50">
+            <i class="fa-solid fa-bolt text-yellow-300 animate-bounce"></i>
+            <span>STRIKE [K]</span>
+          </button>
+        </div>
+
+        <!-- TikFinity WebSocket Input Line -->
+        <div class="flex items-center gap-2 pt-1 border-t border-white/10 text-xs">
+          <i class="fa-solid fa-plug text-gray-400"></i>
+          <input id="input-ws-url" type="text" value="ws://localhost:21213/" placeholder="TikFinity WebSocket URL" class="flex-1 bg-black/40 border border-white/10 rounded-lg px-2.5 py-1 text-gray-300 font-mono text-[11px] outline-none focus:border-red-500">
+          <button id="btn-connect-ws" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 font-semibold rounded-lg text-white transition text-[11px]">Connect</button>
+          <span id="ws-status-msg" class="text-[11px] text-gray-400 font-mono">Listening on port 21213</span>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Hidden Mode Reminder Toast (Shown when UI is hidden) -->
+  <div id="obs-reminder" class="fixed top-4 right-4 z-50 glass-card px-3 py-1.5 rounded-lg text-xs font-mono text-gray-400 hidden pointer-events-none">
+    OBS Mode Active (Press H to restore)
+  </div>
+
+  <script>
+    /* Audio Synthesis Class using Web Audio API (Zero external audio files required) */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.comboPitch = 0;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // Crisp slice / drop thud
+      playSlice(isPerfect = false) {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = isPerfect ? 'triangle' : 'sine';
+        
+        const baseFreq = isPerfect ? 440 * Math.pow(1.05946, this.comboPitch % 12) : 220;
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + 0.12);
+
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.2);
+
+        if (isPerfect) {
+          this.comboPitch = Math.min(this.comboPitch + 1, 15);
+        } else {
+          this.comboPitch = 0;
+        }
+      }
+
+      // Uptone follow / like point chime
+      playPointChime(pts = 1) {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        
+        osc.type = 'sine';
+        const startFreq = pts >= 5 ? 587.33 : 440; // D5 vs A4
+        osc.frequency.setValueAtTime(startFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(startFreq * 1.33, now + 0.15);
+
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.26);
+      }
+
+      // Tumbling / Detach block whoosh
+      playBlockFall() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(180, now);
+        osc.frequency.exponentialRampToValueAtTime(45, now + 0.4);
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.5);
+      }
+
+      // Dramatic Thunder & Electric Crackle
+      playThunder() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const dur = 1.6;
+
+        // 1. High frequency electrical crack
+        const bufferSize = this.ctx.sampleRate * dur;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.4));
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1800, now);
+        filter.frequency.exponentialRampToValueAtTime(120, now + dur);
+
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.8, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.01, now + dur);
+
+        noise.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(this.ctx.destination);
+        noise.start(now);
+
+        // 2. Sub bass boom
+        const sub = this.ctx.createOscillator();
+        const subGain = this.ctx.createGain();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(90, now);
+        sub.frequency.exponentialRampToValueAtTime(25, now + 1.2);
+        subGain.gain.setValueAtTime(0.7, now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+
+        sub.connect(subGain);
+        subGain.connect(this.ctx.destination);
+        sub.start(now);
+        sub.stop(now + 1.3);
+      }
+
+      // Triumphant Medical Victory Fanfare
+      playVictory() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99]; // C major arpeggio
+        
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const startTime = now + idx * 0.08;
+          
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, startTime);
+          
+          gain.gain.setValueAtTime(0, startTime);
+          gain.gain.linearRampToValueAtTime(0.3, startTime + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.8);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + 0.9);
+        });
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    // Game State Object
+    const GAME = {
+      score: 0,
+      goal: 100,
+      goalStep: 50,
+      isAutoPlay: true,
+      combo: 0,
+      isGameOver: false,
+      isWon: false,
+      blockSpeed: 0.12,
+      baseSize: 5.5,
+      blockHeight: 1.1,
+      stackY: 0,
+      axis: 'x', // toggles 'x' and 'z'
+      dir: 1,
+      moveLimit: 8,
+      activeBlock: null,
+      topBlock: null,
+      stack: [], // Array of fixed tower meshes
+      fallingBlocks: [], // Blocks tumbling off
+      particles: [],
+      doctor: null,
+      patient: null,
+      bed: null,
+      lightningBolt: null
+    };
+
+    const canvas = document.getElementById('webgl-canvas');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0e172a);
+    scene.fog = new THREE.FogExp2(0x0e172a, 0.015);
+
+    // Orthographic Camera mimicking Ketchapp Stack perspective
+    const d = 14;
+    const aspect = window.innerWidth / window.innerHeight;
+    const camera = new THREE.OrthographicCamera(
+      -d * aspect, d * aspect,
+      d, -d,
+      -100, 1000
+    );
+    // Classical 45-degree isometric tilt
+    camera.position.set(16, 22, 16);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({
+      canvas: canvas,
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance"
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.4);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+    dirLight.position.set(20, 45, 15);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 0.5;
+    dirLight.shadow.camera.far = 150;
+    const shadowD = 25;
+    dirLight.shadow.camera.left = -shadowD;
+    dirLight.shadow.camera.right = shadowD;
+    dirLight.shadow.camera.top = shadowD;
+    dirLight.shadow.camera.bottom = -shadowD;
+    scene.add(dirLight);
+
+    // Floor Grid / Medical Observation Stage
+    const floorGeo = new THREE.PlaneGeometry(80, 80);
+    const floorMat = new THREE.MeshStandardMaterial({
+      color: 0x111c33,
+      roughness: 0.8,
+      metalness: 0.1
+    });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // Subtle Grid pattern on floor
+    const grid = new THREE.GridHelper(70, 35, 0x38bdf8, 0x1e293b);
+    grid.position.y = -1.98;
+    scene.add(grid);
+
+    // Center Pedestal for First Aid Kit Tower
+    const pedestalGeo = new THREE.BoxGeometry(GAME.baseSize + 1.2, 2, GAME.baseSize + 1.2);
+    const pedestalMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.4,
+      metalness: 0.2
+    });
+    const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
+    pedestal.position.set(0, -1, 0);
+    pedestal.receiveShadow = true;
+    pedestal.castShadow = true;
+    scene.add(pedestal);
+
+    // Creates a stylized 3D First Aid Kit block with white cross emblem and handles
+    function createFirstAidKit(w, h, d, isSlice = false) {
+      const group = new THREE.Group();
+
+      // Main Red First Aid Casing
+      const bodyGeo = new THREE.BoxGeometry(w, h, d);
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0xef4444, // Vibrant medical red
+        roughness: 0.35,
+        metalness: 0.1
+      });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.castShadow = true;
+      body.receiveShadow = true;
+      group.add(body);
+
+      // White cross emblems on top surface (only if block is wide enough)
+      if (w > 0.8 && d > 0.8 && !isSlice) {
+        const crossLength = Math.min(w, d) * 0.55;
+        const crossWidth = crossLength * 0.28;
+        const crossHeight = 0.03;
+
+        const crossMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+        // Horizontal bar
+        const crossHGeo = new THREE.BoxGeometry(crossLength, crossHeight, crossWidth);
+        const crossH = new THREE.Mesh(crossHGeo, crossMat);
+        crossH.position.y = h / 2 + 0.015;
+        group.add(crossH);
+
+        // Vertical bar
+        const crossVGeo = new THREE.BoxGeometry(crossWidth, crossHeight, crossLength);
+        const crossV = new THREE.Mesh(crossVGeo, crossMat);
+        crossV.position.y = h / 2 + 0.015;
+        group.add(crossV);
+
+        // Corner clasps / metallic latches
+        const claspGeo = new THREE.BoxGeometry(w * 0.18, h * 0.4, 0.08);
+        const claspMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.8, roughness: 0.2 });
+        
+        const clasp1 = new THREE.Mesh(claspGeo, claspMat);
+        clasp1.position.set(0, 0, d / 2 + 0.04);
+        group.add(clasp1);
+
+        const clasp2 = new THREE.Mesh(claspGeo, claspMat);
+        clasp2.position.set(0, 0, -d / 2 - 0.04);
+        group.add(clasp2);
+      }
+
+      group.userData = { w, h, d };
+      return group;
+    }
+
+    function createDoctor() {
+      const doctorGroup = new THREE.Group();
+      doctorGroup.position.set(-8, -1, 4);
+      doctorGroup.rotation.y = Math.PI / 4;
+
+      // Doctor's observation podium
+      const docPodiumGeo = new THREE.CylinderGeometry(2.4, 2.7, 1.2, 24);
+      const docPodiumMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 });
+      const docPodium = new THREE.Mesh(docPodiumGeo, docPodiumMat);
+      docPodium.position.y = 0.6;
+      docPodium.receiveShadow = true;
+      doctorGroup.add(docPodium);
+
+      // Character Model Group
+      const charGroup = new THREE.Group();
+      charGroup.position.y = 1.2;
+
+      // Legs (Navy blue scrubs)
+      const legMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.6 });
+      const legGeo = new THREE.CylinderGeometry(0.2, 0.2, 1.2, 12);
+      
+      const leftLeg = new THREE.Mesh(legGeo, legMat);
+      leftLeg.position.set(-0.35, 0.6, 0);
+      leftLeg.castShadow = true;
+      charGroup.add(leftLeg);
+
+      const rightLeg = new THREE.Mesh(legGeo, legMat);
+      rightLeg.position.set(0.35, 0.6, 0);
+      rightLeg.castShadow = true;
+      charGroup.add(rightLeg);
+
+      // Torso / White Lab Coat
+      const coatMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+      const torsoGeo = new THREE.BoxGeometry(1.2, 1.5, 0.8);
+      const torso = new THREE.Mesh(torsoGeo, coatMat);
+      torso.position.set(0, 1.95, 0);
+      torso.castShadow = true;
+      charGroup.add(torso);
+
+      // Stethoscope around neck
+      const stethMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.5 });
+      const stethGeo = new THREE.TorusGeometry(0.45, 0.06, 8, 16);
+      const steth = new THREE.Mesh(stethGeo, stethMat);
+      steth.position.set(0, 2.5, 0.1);
+      steth.rotation.x = Math.PI / 3;
+      charGroup.add(steth);
+
+      // Head
+      const headMat = new THREE.MeshStandardMaterial({ color: 0xfbcfe8, roughness: 0.7 });
+      const headGeo = new THREE.SphereGeometry(0.55, 20, 20);
+      const head = new THREE.Mesh(headGeo, headMat);
+      head.position.set(0, 3.1, 0);
+      head.castShadow = true;
+      charGroup.add(head);
+
+      // Doctor's Medical Cap (Teal)
+      const capMat = new THREE.MeshStandardMaterial({ color: 0x0d9488 });
+      const capGeo = new THREE.CylinderGeometry(0.56, 0.56, 0.35, 18);
+      const cap = new THREE.Mesh(capGeo, capMat);
+      cap.position.set(0, 3.45, 0);
+      charGroup.add(cap);
+
+      // Head Mirror (classic doctor reflector)
+      const reflectorMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
+      const reflectorGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.05, 16);
+      const reflector = new THREE.Mesh(reflectorGeo, reflectorMat);
+      reflector.rotation.x = Math.PI / 2;
+      reflector.position.set(0, 3.45, 0.55);
+      charGroup.add(reflector);
+
+      // Left Arm holding Clipboard
+      const armMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc });
+      const armGeo = new THREE.CylinderGeometry(0.18, 0.18, 1.1, 12);
+      
+      const leftArm = new THREE.Mesh(armGeo, armMat);
+      leftArm.position.set(-0.75, 1.9, 0.2);
+      leftArm.rotation.x = Math.PI / 3;
+      charGroup.add(leftArm);
+
+      // Clipboard
+      const boardMat = new THREE.MeshStandardMaterial({ color: 0xb45309 });
+      const boardGeo = new THREE.BoxGeometry(0.7, 0.9, 0.08);
+      const board = new THREE.Mesh(boardGeo, boardMat);
+      board.position.set(-0.7, 2.1, 0.7);
+      board.rotation.x = Math.PI / 4;
+      charGroup.add(board);
+
+      // Right Arm (animated on cheer/shock)
+      const rightArm = new THREE.Mesh(armGeo, armMat);
+      rightArm.position.set(0.75, 1.9, 0);
+      charGroup.add(rightArm);
+
+      doctorGroup.add(charGroup);
+
+      return {
+        root: doctorGroup,
+        char: charGroup,
+        head: head,
+        rightArm: rightArm,
+        leftArm: leftArm,
+        torso: torso,
+        coatMat: coatMat,
+        state: 'idle', // idle, cheer, shocked, struck
+        timer: 0,
+        origY: 1.2
+      };
+    }
+
+    function createPatient() {
+      const bedGroup = new THREE.Group();
+      bedGroup.position.set(7.5, -1, -3);
+      bedGroup.rotation.y = -Math.PI / 3.5;
+
+      // Hospital Bed Frame
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7, roughness: 0.3 });
+      const frameGeo = new THREE.BoxGeometry(2.4, 0.8, 5.2);
+      const frame = new THREE.Mesh(frameGeo, frameMat);
+      frame.position.y = 1.0;
+      frame.castShadow = true;
+      bedGroup.add(frame);
+
+      // Bed Legs / Wheels
+      const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.0, 10);
+      const legPositions = [
+        [-1.0, 0.5, 2.3], [1.0, 0.5, 2.3],
+        [-1.0, 0.5, -2.3], [1.0, 0.5, -2.3]
+      ];
+      legPositions.forEach(pos => {
+        const bl = new THREE.Mesh(legGeo, frameMat);
+        bl.position.set(...pos);
+        bedGroup.add(bl);
+      });
+
+      // Mattress
+      const mattMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.6 });
+      const mattGeo = new THREE.BoxGeometry(2.2, 0.4, 5.0);
+      const mattress = new THREE.Mesh(mattGeo, mattMat);
+      mattress.position.y = 1.5;
+      bedGroup.add(mattress);
+
+      // Pillow
+      const pilMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.9 });
+      const pilGeo = new THREE.BoxGeometry(1.8, 0.25, 0.9);
+      const pillow = new THREE.Mesh(pilGeo, pilMat);
+      pillow.position.set(0, 1.8, -1.9);
+      bedGroup.add(pillow);
+
+      // IV Drip Pole
+      const ivPoleMat = new THREE.MeshStandardMaterial({ color: 0xcfd8dc, metalness: 0.8 });
+      const ivPole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4.2), ivPoleMat);
+      ivPole.position.set(-1.4, 2.1, -1.8);
+      bedGroup.add(ivPole);
+
+      // IV Saline Bag
+      const bagMat = new THREE.MeshStandardMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.8 });
+      const bag = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.6, 0.15), bagMat);
+      bag.position.set(-1.4, 3.8, -1.5);
+      bedGroup.add(bag);
+
+      // Patient Body Group
+      const patBody = new THREE.Group();
+      patBody.position.set(0, 1.7, 0);
+
+      // Patient Head
+      const pHeadMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.7 });
+      const pHead = new THREE.Mesh(new THREE.SphereGeometry(0.48, 16, 16), pHeadMat);
+      pHead.position.set(0, 0.4, -1.9);
+      patBody.add(pHead);
+
+      // Blanket covering patient (Sickly cyan)
+      const blanketMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.5 });
+      const blanketGeo = new THREE.BoxGeometry(2.1, 0.6, 3.4);
+      const blanket = new THREE.Mesh(blanketGeo, blanketMat);
+      blanket.position.set(0, 0.3, 0.4);
+      blanket.castShadow = true;
+      patBody.add(blanket);
+
+      // Patient Arms
+      const armMat = new THREE.MeshStandardMaterial({ color: 0xfde047 });
+      const armGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.9);
+      
+      const pLeftArm = new THREE.Mesh(armGeo, armMat);
+      pLeftArm.position.set(-1.0, 0.3, 0);
+      patBody.add(pLeftArm);
+
+      const pRightArm = new THREE.Mesh(armGeo, armMat);
+      pRightArm.position.set(1.0, 0.3, 0);
+      patBody.add(pRightArm);
+
+      bedGroup.add(patBody);
+
+      return {
+        root: bedGroup,
+        body: patBody,
+        head: pHead,
+        blanket: blanket,
+        leftArm: pLeftArm,
+        rightArm: pRightArm,
+        state: 'lying', // 'lying' or 'healed_cheering'
+        timer: 0
+      };
+    }
+
+    GAME.doctor = createDoctor();
+    scene.add(GAME.doctor.root);
+
+    GAME.patient = createPatient();
+    scene.add(GAME.patient.root);
+
+    // Initial Foundation Block
+    function initStack() {
+      // Clear previous stack items
+      GAME.stack.forEach(b => scene.remove(b));
+      GAME.stack = [];
+      GAME.fallingBlocks.forEach(fb => scene.remove(fb.mesh));
+      GAME.fallingBlocks = [];
+
+      // Create foundation block at base
+      const baseBlock = createFirstAidKit(GAME.baseSize, GAME.blockHeight, GAME.baseSize);
+      baseBlock.position.set(0, GAME.blockHeight / 2, 0);
+      scene.add(baseBlock);
+      GAME.stack.push(baseBlock);
+      GAME.topBlock = baseBlock;
+      GAME.stackY = GAME.blockHeight;
+
+      spawnNextBlock();
+    }
+
+    function spawnNextBlock() {
+      if (GAME.isGameOver || GAME.isWon) return;
+
+      const prevSize = GAME.topBlock.userData;
+      // Alternate axis
+      GAME.axis = GAME.axis === 'x' ? 'z' : 'x';
+      GAME.dir = 1;
+
+      const newBlock = createFirstAidKit(prevSize.w, GAME.blockHeight, prevSize.d);
+      const startOffset = -GAME.moveLimit;
+
+      if (GAME.axis === 'x') {
+        newBlock.position.set(startOffset, GAME.stackY + GAME.blockHeight / 2, GAME.topBlock.position.z);
+      } else {
+        newBlock.position.set(GAME.topBlock.position.x, GAME.stackY + GAME.blockHeight / 2, startOffset);
+      }
+
+      scene.add(newBlock);
+      GAME.activeBlock = newBlock;
+    }
+
+    function dropBlock() {
+      if (!GAME.activeBlock || GAME.isGameOver) return;
+
+      const active = GAME.activeBlock;
+      const prev = GAME.topBlock;
+      const prevSize = prev.userData;
+
+      let delta, overlap, overhangSize;
+      let newW = prevSize.w;
+      let newD = prevSize.d;
+      let newPosX = active.position.x;
+      let newPosZ = active.position.z;
+
+      if (GAME.axis === 'x') {
+        delta = active.position.x - prev.position.x;
+        overlap = prevSize.w - Math.abs(delta);
+        overhangSize = Math.abs(delta);
+
+        // Check for Near-Perfect Placement (< 0.25 threshold)
+        if (Math.abs(delta) < 0.25) {
+          // Snap for perfect combo
+          newPosX = prev.position.x;
+          overlap = prevSize.w;
+          handlePerfectDrop(active.position.x, active.position.y, active.position.z);
+        } else if (overlap > 0) {
+          // Sliced drop
+          newW = overlap;
+          newPosX = prev.position.x + delta / 2;
+
+          // Create falling sliced overhang
+          const overhangX = delta > 0 
+            ? (newPosX + overlap / 2 + overhangSize / 2)
+            : (newPosX - overlap / 2 - overhangSize / 2);
+
+          spawnFallingSlice(overhangSize, GAME.blockHeight, prevSize.d, overhangX, active.position.y, active.position.z, delta * 2, 0);
+          sound.playSlice(false);
+          GAME.combo = 0;
+          updateComboUI();
+        } else {
+          // Total miss!
+          spawnFallingSlice(prevSize.w, GAME.blockHeight, prevSize.d, active.position.x, active.position.y, active.position.z, delta * 2, 0);
+          handleCompleteMiss();
+          return;
+        }
+      } else {
+        // Z Axis Slicing
+        delta = active.position.z - prev.position.z;
+        overlap = prevSize.d - Math.abs(delta);
+        overhangSize = Math.abs(delta);
+
+        if (Math.abs(delta) < 0.25) {
+          newPosZ = prev.position.z;
+          overlap = prevSize.d;
+          handlePerfectDrop(active.position.x, active.position.y, active.position.z);
+        } else if (overlap > 0) {
+          newD = overlap;
+          newPosZ = prev.position.z + delta / 2;
+
+          const overhangZ = delta > 0 
+            ? (newPosZ + overlap / 2 + overhangSize / 2)
+            : (newPosZ - overlap / 2 - overhangSize / 2);
+
+          spawnFallingSlice(prevSize.w, GAME.blockHeight, overhangSize, active.position.x, active.position.y, overhangZ, 0, delta * 2);
+          sound.playSlice(false);
+          GAME.combo = 0;
+          updateComboUI();
+        } else {
+          spawnFallingSlice(prevSize.w, GAME.blockHeight, prevSize.d, active.position.x, active.position.y, active.position.z, 0, delta * 2);
+          handleCompleteMiss();
+          return;
+        }
+      }
+
+      // Remove the moving active block and replace with properly sized slice
+      scene.remove(active);
+
+      const placedBlock = createFirstAidKit(newW, GAME.blockHeight, newD);
+      placedBlock.position.set(newPosX, GAME.stackY + GAME.blockHeight / 2, newPosZ);
+      scene.add(placedBlock);
+
+      GAME.stack.push(placedBlock);
+      GAME.topBlock = placedBlock;
+      GAME.stackY += GAME.blockHeight;
+
+      // Increase score by 1 on standard placement
+      addScore(1, false);
+
+      // Doctor cheers briefly
+      triggerDoctorCheer();
+
+      // Spawn next moving kit
+      spawnNextBlock();
+    }
+
+    function spawnFallingSlice(w, h, d, x, y, z, vx, vz) {
+      if (w <= 0.05 || d <= 0.05) return;
+      const slice = createFirstAidKit(w, h, d, true);
+      slice.position.set(x, y, z);
+      scene.add(slice);
+
+      GAME.fallingBlocks.push({
+        mesh: slice,
+        vx: vx * 0.8 + (Math.random() - 0.5) * 1.5,
+        vy: 1.0,
+        vz: vz * 0.8 + (Math.random() - 0.5) * 1.5,
+        rx: (Math.random() - 0.5) * 4.0,
+        ry: (Math.random() - 0.5) * 4.0,
+        rz: (Math.random() - 0.5) * 4.0
+      });
+    }
+
+    function handlePerfectDrop(x, y, z) {
+      GAME.combo++;
+      sound.playSlice(true);
+      updateComboUI();
+      createSparks(x, y + 0.6, z, 0xfacc15, 25);
+      showFloatingPopup(`PERFECT x${GAME.combo}!`, '#facc15');
+    }
+
+    function handleCompleteMiss() {
+      scene.remove(GAME.activeBlock);
+      GAME.activeBlock = null;
+      sound.playBlockFall();
+      triggerDoctorShock();
+      showFloatingPopup('MISS!', '#ef4444');
+      
+      // Penalty: deduct 5 points
+      reduceScore(5);
+
+      // Reset active block
+      setTimeout(() => {
+        if (!GAME.isGameOver) {
+          spawnNextBlock();
+        }
+      }, 700);
+    }
+
+    function createSparks(x, y, z, colorHex, count = 20) {
+      const geo = new THREE.BufferGeometry();
+      const positions = [];
+      const vels = [];
+
+      for (let i = 0; i < count; i++) {
+        positions.push(x, y, z);
+        vels.push({
+          x: (Math.random() - 0.5) * 8,
+          y: Math.random() * 8 + 3,
+          z: (Math.random() - 0.5) * 8
+        });
+      }
+
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      const mat = new THREE.PointsMaterial({
+        color: colorHex,
+        size: 0.35,
+        transparent: true,
+        opacity: 1
+      });
+
+      const pSystem = new THREE.Points(geo, mat);
+      scene.add(pSystem);
+
+      GAME.particles.push({
+        system: pSystem,
+        vels: vels,
+        life: 1.0,
+        decay: 1.8
+      });
+    }
+
+    function createCelebrationConfetti() {
+      const colors = [0xef4444, 0x10b981, 0x3b82f6, 0xfacc15, 0xec4899];
+      const count = 120;
+      
+      for (let i = 0; i < count; i++) {
+        const cGeo = new THREE.BoxGeometry(0.35, 0.35, 0.05);
+        const cMat = new THREE.MeshBasicMaterial({
+          color: colors[Math.floor(Math.random() * colors.length)]
+        });
+        const confMesh = new THREE.Mesh(cGeo, cMat);
+        confMesh.position.set(
+          (Math.random() - 0.5) * 16,
+          GAME.stackY + Math.random() * 6 + 4,
+          (Math.random() - 0.5) * 16
+        );
+        scene.add(confMesh);
+
+        GAME.fallingBlocks.push({
+          mesh: confMesh,
+          vx: (Math.random() - 0.5) * 6,
+          vy: Math.random() * 4 + 2,
+          vz: (Math.random() - 0.5) * 6,
+          rx: Math.random() * 8,
+          ry: Math.random() * 8,
+          rz: Math.random() * 8
+        });
+      }
+    }
+
+    function addScore(amount, isTikTok = true) {
+      if (GAME.isGameOver) return;
+      GAME.score += amount;
+      
+      if (isTikTok) {
+        sound.playPointChime(amount);
+        triggerDoctorCheer();
+      }
+
+      updateHUD();
+      checkWinLoss();
+    }
+
+    function reduceScore(amount) {
+      if (GAME.isGameOver) return;
+      GAME.score = Math.max(0, GAME.score - amount);
+
+      // Top block shakes and tumbles off
+      if (GAME.stack.length > 1) {
+        const top = GAME.stack.pop();
+        const size = top.userData;
+        scene.remove(top);
+        spawnFallingSlice(size.w, size.h, size.d, top.position.x, top.position.y, top.position.z, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5);
+        sound.playBlockFall();
+
+        GAME.topBlock = GAME.stack[GAME.stack.length - 1];
+        GAME.stackY -= GAME.blockHeight;
+      }
+
+      triggerDoctorShock();
+      showFloatingPopup(`-${amount} PTS`, '#ef4444');
+      updateHUD();
+      checkWinLoss();
+    }
+
+    function checkWinLoss() {
+      // 1. Goal Reached -> WIN
+      if (GAME.score >= GAME.goal && !GAME.isWon) {
+        triggerVictory();
+      }
+      // 2. Score hits 0 -> LOSS (Lightning Strike)
+      else if (GAME.score <= 0 && !GAME.isGameOver) {
+        triggerLightningLoss();
+      }
+    }
+
+    function triggerVictory() {
+      GAME.isWon = true;
+      sound.playVictory();
+      createCelebrationConfetti();
+      showFloatingPopup('PATIENT SAVED! GOAL REACHED! 🎉', '#10b981');
+
+      // Patient leaps up healed
+      if (GAME.patient) {
+        GAME.patient.state = 'healed_cheering';
+        GAME.patient.blanket.visible = false;
+        GAME.patient.body.position.y = 2.6; // stands up on bed
+      }
+
+      // Automatically bump goal for next round after celebration
+      setTimeout(() => {
+        GAME.goal += GAME.goalStep;
+        document.getElementById('input-goal').value = GAME.goal;
+        GAME.isWon = false;
+        if (GAME.patient) {
+          GAME.patient.state = 'lying';
+          GAME.patient.blanket.visible = true;
+          GAME.patient.body.position.y = 1.7;
+        }
+        updateHUD();
+        showFloatingPopup(`NEXT GOAL: ${GAME.goal}`, '#38bdf8');
+      }, 4500);
+    }
+
+    function triggerLightningLoss() {
+      GAME.isGameOver = true;
+      sound.playThunder();
+
+      // Screen Flash
+      const overlay = document.getElementById('lightning-overlay');
+      overlay.style.opacity = '1';
+      setTimeout(() => overlay.style.opacity = '0.3', 80);
+      setTimeout(() => overlay.style.opacity = '0.9', 150);
+      setTimeout(() => overlay.style.opacity = '0', 350);
+
+      // Generate Jagged Lightning Bolt 3D Geometry striking the doctor
+      createLightningBolt();
+
+      // Doctor gets struck by lightning
+      if (GAME.doctor) {
+        GAME.doctor.state = 'struck';
+        GAME.doctor.coatMat.color.setHex(0x1e293b); // Charred coat
+        createSparks(GAME.doctor.root.position.x, 3.5, GAME.doctor.root.position.z, 0x38bdf8, 40);
+        createSparks(GAME.doctor.root.position.x, 2.0, GAME.doctor.root.position.z, 0xfacc15, 30);
+      }
+
+      showFloatingPopup('⚡ DOCTOR STRUCK DOWN!', '#ef4444');
+
+      // Reset after drama
+      setTimeout(() => {
+        resetGameAfterLoss();
+      }, 4000);
+    }
+
+    function createLightningBolt() {
+      if (GAME.lightningBolt) scene.remove(GAME.lightningBolt);
+
+      const docPos = GAME.doctor.root.position;
+      const startY = 45;
+      const targetY = docPos.y + 3.2;
+      const points = [];
+      const segments = 18;
+
+      let currX = docPos.x + (Math.random() - 0.5) * 2;
+      let currZ = docPos.z + (Math.random() - 0.5) * 2;
+      points.push(new THREE.Vector3(currX, startY, currZ));
+
+      for (let i = 1; i < segments; i++) {
+        const t = i / segments;
+        const y = THREE.MathUtils.lerp(startY, targetY, t);
+        const jitterX = (Math.random() - 0.5) * 3.5;
+        const jitterZ = (Math.random() - 0.5) * 3.5;
+        const x = THREE.MathUtils.lerp(currX, docPos.x, t) + jitterX;
+        const z = THREE.MathUtils.lerp(currZ, docPos.z, t) + jitterZ;
+        points.push(new THREE.Vector3(x, y, z));
+      }
+      points.push(new THREE.Vector3(docPos.x, targetY, docPos.z));
+
+      const curve = new THREE.CatmullRomCurve3(points);
+      const boltGeo = new THREE.TubeGeometry(curve, 32, 0.22, 6, false);
+      const boltMat = new THREE.MeshBasicMaterial({ color: 0x93c5fd });
+      const boltMesh = new THREE.Mesh(boltGeo, boltMat);
+
+      scene.add(boltMesh);
+      GAME.lightningBolt = boltMesh;
+
+      // Disappear after flash
+      setTimeout(() => {
+        if (GAME.lightningBolt) {
+          scene.remove(GAME.lightningBolt);
+          GAME.lightningBolt = null;
+        }
+      }, 250);
+    }
+
+    function resetGameAfterLoss() {
+      GAME.score = 0;
+      GAME.isGameOver = false;
+      if (GAME.doctor) {
+        GAME.doctor.state = 'idle';
+        GAME.doctor.coatMat.color.setHex(0xf8fafc);
+        GAME.doctor.char.rotation.x = 0;
+        GAME.doctor.char.position.y = GAME.doctor.origY;
+      }
+      initStack();
+      updateHUD();
+      showFloatingPopup('GAME RESET - READY!', '#38bdf8');
+    }
+
+    function triggerDoctorCheer() {
+      if (!GAME.doctor || GAME.doctor.state === 'struck') return;
+      GAME.doctor.state = 'cheer';
+      GAME.doctor.timer = 0.5;
+    }
+
+    function triggerDoctorShock() {
+      if (!GAME.doctor || GAME.doctor.state === 'struck') return;
+      GAME.doctor.state = 'shocked';
+      GAME.doctor.timer = 0.8;
+    }
+
+    function showFloatingPopup(text, color = '#10b981') {
+      const container = document.getElementById('popup-container');
+      const popup = document.createElement('div');
+      popup.className = 'floating-popup';
+      popup.style.color = color;
+      popup.style.left = '50%';
+      popup.style.top = '45%';
+      popup.innerText = text;
+
+      container.appendChild(popup);
+      setTimeout(() => popup.remove(), 1400);
+    }
+
+    function updateHUD() {
+      document.getElementById('score-display').innerText = Math.floor(GAME.score);
+      document.getElementById('goal-display').innerText = GAME.goal;
+      
+      const pct = Math.min(100, (GAME.score / GAME.goal) * 100);
+      document.getElementById('progress-bar').style.width = `${pct}%`;
+      document.getElementById('percent-display').innerText = `${pct.toFixed(1)}% SAVED`;
+    }
+
+    function updateComboUI() {
+      document.getElementById('combo-text').innerText = `COMBO: x${GAME.combo}`;
+    }
+
+    function setAutoPlay(val) {
+      GAME.isAutoPlay = val;
+      const badge = document.getElementById('mode-badge');
+      const text = document.getElementById('mode-text');
+      
+      if (val) {
+        badge.className = 'glass-card px-3 py-1 rounded-lg text-xs font-bold text-amber-400 border border-amber-400/30 flex items-center gap-2';
+        text.innerText = 'AUTO-PLAYING';
+      } else {
+        badge.className = 'glass-card px-3 py-1 rounded-lg text-xs font-bold text-blue-400 border border-blue-400/30 flex items-center gap-2';
+        text.innerText = 'MANUAL CONTROL';
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      sound.init();
+
+      // Spacebar: Instant Manual Drop & immediately stops auto-play
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setAutoPlay(false);
+        dropBlock();
+      }
+      // 'A' key: Instantly resumes Auto-play
+      else if (e.key === 'a' || e.key === 'A') {
+        setAutoPlay(!GAME.isAutoPlay);
+        showFloatingPopup(GAME.isAutoPlay ? 'AUTO-PLAY ENABLED' : 'MANUAL MODE', '#f59e0b');
+      }
+      // 'S' key: Follower Override (+5 points)
+      else if (e.key === 's' || e.key === 'S') {
+        addScore(5);
+        showFloatingPopup('+5 FOLLOWER!', '#10b981');
+      }
+      // 'L' key: Like Override (+1% of goal)
+      else if (e.key === 'l' || e.key === 'L') {
+        const likePts = Math.max(1, GAME.goal * 0.01);
+        addScore(likePts);
+        showFloatingPopup(`+${likePts.toFixed(0)} LIKE!`, '#ec4899');
+      }
+      // 'D' key: Decrease score by 5 (triggers block detachment)
+      else if (e.key === 'd' || e.key === 'D') {
+        reduceScore(5);
+      }
+      // 'K' key: Instant Kill Button (drops to 0 -> triggers lightning strike)
+      else if (e.key === 'k' || e.key === 'K') {
+        GAME.score = 0;
+        triggerLightningLoss();
+      }
+      // 'H' key: Toggle Clean OBS HUD Mode
+      else if (e.key === 'h' || e.key === 'H') {
+        toggleHUDVisibility();
+      }
+    });
+
+    // Canvas click: Drops block and instantly disables auto-play
+    canvas.addEventListener('pointerdown', (e) => {
+      sound.init();
+      setAutoPlay(false);
+      dropBlock();
+    });
+
+    document.getElementById('btn-drop').addEventListener('click', () => {
+      sound.init();
+      setAutoPlay(false);
+      dropBlock();
+    });
+
+    document.getElementById('btn-auto').addEventListener('click', () => {
+      setAutoPlay(!GAME.isAutoPlay);
+    });
+
+    document.getElementById('btn-follow').addEventListener('click', () => {
+      addScore(5);
+      showFloatingPopup('+5 FOLLOWER!', '#10b981');
+    });
+
+    document.getElementById('btn-like').addEventListener('click', () => {
+      const likePts = Math.max(1, GAME.goal * 0.01);
+      addScore(likePts);
+      showFloatingPopup(`+${likePts.toFixed(0)} LIKE!`, '#ec4899');
+    });
+
+    document.getElementById('btn-penalty').addEventListener('click', () => {
+      reduceScore(5);
+    });
+
+    document.getElementById('btn-kill').addEventListener('click', () => {
+      GAME.score = 0;
+      triggerLightningLoss();
+    });
+
+    document.getElementById('btn-set-goal').addEventListener('click', () => {
+      const val = parseInt(document.getElementById('input-goal').value, 10);
+      if (val && val > 0) {
+        GAME.goal = val;
+        updateHUD();
+        showFloatingPopup(`GOAL UPDATED: ${GAME.goal}`, '#38bdf8');
+      }
+    });
+
+    function toggleHUDVisibility() {
+      const streamerDock = document.getElementById('streamer-controls');
+      const reminder = document.getElementById('obs-reminder');
+      
+      if (streamerDock.classList.contains('hidden')) {
+        streamerDock.classList.remove('hidden');
+        reminder.classList.add('hidden');
+      } else {
+        streamerDock.classList.add('hidden');
+        reminder.classList.remove('hidden');
+      }
+    }
+
+    document.getElementById('btn-toggle-hud').addEventListener('click', toggleHUDVisibility);
+
+    class TikFinityClient {
+      constructor() {
+        this.socket = null;
+        this.statusDot = document.getElementById('conn-dot');
+        this.statusText = document.getElementById('conn-text');
+        this.statusMsg = document.getElementById('ws-status-msg');
+      }
+
+      connect(url) {
+        try {
+          if (this.socket) {
+            this.socket.close();
+          }
+
+          this.statusText.innerText = 'Connecting...';
+          this.statusDot.className = 'w-3 h-3 rounded-full bg-amber-400 animate-pulse';
+
+          this.socket = new WebSocket(url);
+
+          this.socket.onopen = () => {
+            this.statusText.innerText = 'TikFinity: Live';
+            this.statusDot.className = 'w-3 h-3 rounded-full bg-emerald-400';
+            this.statusMsg.innerText = `Connected to ${url}`;
+            showFloatingPopup('TikFinity Connected!', '#10b981');
+          };
+
+          this.socket.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              this.handleTikFinityPayload(data);
+            } catch (err) {
+              console.warn('TikFinity parse notice:', err);
+            }
+          };
+
+          this.socket.onerror = () => {
+            this.statusText.innerText = 'TikFinity: Standby';
+            this.statusDot.className = 'w-3 h-3 rounded-full bg-amber-400';
+            this.statusMsg.innerText = 'Use buttons or check port 21213';
+          };
+
+          this.socket.onclose = () => {
+            this.statusText.innerText = 'TikFinity: Offline';
+            this.statusDot.className = 'w-3 h-3 rounded-full bg-rose-500';
+          };
+        } catch (e) {
+          console.warn('WebSocket connect issue:', e);
+        }
+      }
+
+      handleTikFinityPayload(msg) {
+        // TikFinity standard message payload structure
+        const eventType = (msg.event || msg.type || msg.action || '').toLowerCase();
+        
+        // 1. Follower Event -> +5 Points
+        if (eventType.includes('follow')) {
+          addScore(5);
+          showFloatingPopup(`+5 NEW FOLLOWER!`, '#10b981');
+        }
+        // 2. Like Event -> +1% of Goal
+        else if (eventType.includes('like')) {
+          const count = msg.data?.likeCount || msg.count || 1;
+          const likePts = Math.max(1, (GAME.goal * 0.01) * Math.min(count, 5));
+          addScore(likePts);
+          showFloatingPopup(`+${likePts.toFixed(0)} LIKE!`, '#ec4899');
+        }
+        // 3. Share Event -> +3 Points
+        else if (eventType.includes('share')) {
+          addScore(3);
+          showFloatingPopup(`+3 LIVE SHARE!`, '#38bdf8');
+        }
+        // 4. Gift Event -> Scaled points
+        else if (eventType.includes('gift')) {
+          const diamonds = msg.data?.diamondCount || 10;
+          const pts = Math.max(5, Math.floor(diamonds * 0.5));
+          addScore(pts);
+          showFloatingPopup(`🎁 GIFT BONUS: +${pts} PTS!`, '#facc15');
+        }
+      }
+    }
+
+    const tikfinity = new TikFinityClient();
+    document.getElementById('btn-connect-ws').addEventListener('click', () => {
+      const url = document.getElementById('input-ws-url').value.trim();
+      tikfinity.connect(url);
+    });
+
+    // Initial background connect attempt
+    tikfinity.connect('ws://localhost:21213/');
+
+    let lastTime = performance.now();
+
+    function updateAnimations(dt) {
+      // 1. Doctor Animation
+      if (GAME.doctor) {
+        const d = GAME.doctor;
+        if (d.state === 'idle') {
+          // Subtle breathing & clipboard glancing
+          d.char.position.y = d.origY + Math.sin(performance.now() * 0.003) * 0.04;
+          d.head.rotation.y = Math.sin(performance.now() * 0.0015) * 0.2;
+          d.rightArm.rotation.x = Math.sin(performance.now() * 0.004) * 0.15;
+        } else if (d.state === 'cheer') {
+          // Jumping cheered pump
+          d.char.position.y = d.origY + Math.abs(Math.sin(performance.now() * 0.012)) * 0.35;
+          d.rightArm.rotation.x = -Math.PI * 0.8; // Arm in air
+          d.timer -= dt;
+          if (d.timer <= 0) d.state = 'idle';
+        } else if (d.state === 'shocked') {
+          // Trembling flinch
+          d.char.position.y = d.origY + (Math.random() - 0.5) * 0.08;
+          d.rightArm.rotation.x = -Math.PI * 0.5;
+          d.head.rotation.z = (Math.random() - 0.5) * 0.2;
+          d.timer -= dt;
+          if (d.timer <= 0) d.state = 'idle';
+        } else if (d.state === 'struck') {
+          // Knocked flat backwards onto pedestal
+          d.char.rotation.x = THREE.MathUtils.lerp(d.char.rotation.x, Math.PI / 2, dt * 8);
+          d.char.position.y = THREE.MathUtils.lerp(d.char.position.y, 0.4, dt * 8);
+        }
+      }
+
+      // 2. Patient Animation
+      if (GAME.patient) {
+        const p = GAME.patient;
+        if (p.state === 'lying') {
+          p.head.rotation.y = Math.sin(performance.now() * 0.002) * 0.15;
+        } else if (p.state === 'healed_cheering') {
+          // Celebratory victory dance
+          p.body.position.y = 2.4 + Math.abs(Math.sin(performance.now() * 0.015)) * 0.4;
+          p.leftArm.rotation.x = -Math.PI * 0.85 + Math.sin(performance.now() * 0.01) * 0.3;
+          p.rightArm.rotation.x = -Math.PI * 0.85 + Math.cos(performance.now() * 0.01) * 0.3;
+          p.head.rotation.z = Math.sin(performance.now() * 0.01) * 0.25;
+        }
+      }
+
+      // 3. Falling Blocks Physics (Tumbling gravity)
+      for (let i = GAME.fallingBlocks.length - 1; i >= 0; i--) {
+        const fb = GAME.fallingBlocks[i];
+        fb.vy -= 22 * dt; // Gravity
+        fb.mesh.position.x += fb.vx * dt;
+        fb.mesh.position.y += fb.vy * dt;
+        fb.mesh.position.z += fb.vz * dt;
+        
+        fb.mesh.rotation.x += fb.rx * dt;
+        fb.mesh.rotation.y += fb.ry * dt;
+        fb.mesh.rotation.z += fb.rz * dt;
+
+        // Cleanup fallen blocks
+        if (fb.mesh.position.y < -30) {
+          scene.remove(fb.mesh);
+          GAME.fallingBlocks.splice(i, 1);
+        }
+      }
+
+      // 4. Particle systems update
+      for (let i = GAME.particles.length - 1; i >= 0; i--) {
+        const p = GAME.particles[i];
+        p.life -= p.decay * dt;
+        const pos = p.system.geometry.attributes.position.array;
+        
+        for (let j = 0; j < p.vels.length; j++) {
+          p.vels[j].y -= 9.8 * dt;
+          pos[j * 3] += p.vels[j].x * dt;
+          pos[j * 3 + 1] += p.vels[j].y * dt;
+          pos[j * 3 + 2] += p.vels[j].z * dt;
+        }
+        p.system.geometry.attributes.position.needsUpdate = true;
+        p.system.material.opacity = Math.max(0, p.life);
+
+        if (p.life <= 0) {
+          scene.remove(p.system);
+          GAME.particles.splice(i, 1);
+        }
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const now = performance.now();
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+
+      // Moving active block
+      if (GAME.activeBlock && !GAME.isGameOver) {
+        const block = GAME.activeBlock;
+        const moveAxis = GAME.axis;
+
+        // Oscillate back and forth
+        block.position[moveAxis] += GAME.dir * GAME.blockSpeed * 60 * dt;
+
+        if (block.position[moveAxis] > GAME.moveLimit) {
+          block.position[moveAxis] = GAME.moveLimit;
+          GAME.dir = -1;
+        } else if (block.position[moveAxis] < -GAME.moveLimit) {
+          block.position[moveAxis] = -GAME.moveLimit;
+          GAME.dir = 1;
+        }
+
+        // Auto-play alignment sensor
+        if (GAME.isAutoPlay && GAME.topBlock) {
+          const targetCoord = GAME.topBlock.position[moveAxis];
+          const dist = Math.abs(block.position[moveAxis] - targetCoord);
+          
+          // Drop smoothly when perfectly aligned
+          if (dist < 0.12) {
+            dropBlock();
+          }
+        }
+      }
+
+      // Smooth Camera Elevation following stack height
+      const targetCamY = Math.max(22, GAME.stackY + 16);
+      const targetLookY = Math.max(0, GAME.stackY - 2);
+      camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetCamY, dt * 2.5);
+      camera.lookAt(0, THREE.MathUtils.lerp(camera.position.y - 22, targetLookY, dt * 2.5), 0);
+
+      updateAnimations(dt);
+
+      renderer.render(scene, camera);
+    }
+
+    function handleResize() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const aspect = w / h;
+
+      camera.left = -d * aspect;
+      camera.right = d * aspect;
+      camera.top = d;
+      camera.bottom = -d;
+      camera.updateProjectionMatrix();
+
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    }
+
+    window.addEventListener('resize', handleResize);
+
+    // TikFinity / Node.js Server Listener
+(function connectTikFinityRelay() {
+  const ws = new WebSocket(`ws://${window.location.host}`);
+  ws.onopen = () => console.log('[Server] Connected to local TikFinity relay');
+  ws.onmessage = (msg) => {
+    try {
+      const data = JSON.parse(msg.data);
+      if (data.event === 'follow') {
+        // Triggers follow points
+        if (typeof addScore === 'function') addScore(5);
+        else if (typeof GAME !== 'undefined' && GAME.score !== undefined) GAME.score += 5;
+      } else if (data.event === 'like') {
+        // Triggers like points (1% of goal)
+        const boost = Math.max(1, Math.round((GAME?.goal || 100) * 0.01));
+        if (typeof addScore === 'function') addScore(boost);
+      } else if (data.event === 'kill') {
+        if (typeof triggerLightningDeath === 'function') triggerLightningDeath();
+      }
+    } catch (err) {
+      console.error('Error parsing event:', err);
+    }
+  };
+  ws.onclose = () => setTimeout(connectTikFinityRelay, 2000);
+})();
+
+    window.onload = function() {
+      initStack();
+      updateHUD();
+      setAutoPlay(true);
+      animate();
+    };
+  </script>
+</body>
+</html>
